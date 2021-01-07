@@ -10,7 +10,7 @@ The following files may be run to recreate the examples from the paper:
 
 - **Simulations (Section 5)**: file `11-simulations-final.R`.
 
-- **Example 6.1**: file `12-disease-final.R`. The `TMB` function template `02_disease.cpp` must be compiled once beforehand, using the `compile()` call in the `.R` file.
+- **Example 6.1**: file `12-disease-final.R`. The `TMB` function template `02_disease.cpp` must be compiled once beforehand, using the `compile()` call in the `.R` file. The saved `MCMC` results can be downloaded [here](https://drive.google.com/file/d/1_ogYlDHsmQYTviCLqdwiCrxOhLmHoTJ7/view?usp=sharing).
 
 - **Example 6.2**: file `13-astro-final.R`. The `TMB` function template `01_astro.cpp` must be compiled once beforehand, using the `compile()` call in the `.R` file.
 
