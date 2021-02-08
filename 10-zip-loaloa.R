@@ -8,7 +8,7 @@ library(aghq)
 data(loaloa,package = "geostatsp")
 
 # Set working dir for TMB executation
-setwd("~/phd/projects/best-friends-gang/normalizing-constant/code/")
+setwd("/storage/phd/projects/best-friends-gang/normalizing-constant/code/")
 
 # Create covariate rasters
 elevationLoa <- elevationLoa - 750
@@ -200,8 +200,8 @@ tm <- Sys.time()
 loaloazipquad <- aghq::marginal_laplace(ff,3,list(W = opt$mode,theta = startingtheta),control = list(method = 'trust',inner_method = 'sparse_trust'))
 runtime <- difftime(Sys.time(),tm,units='secs')
 cat("Run time for loaloa AGHQ:",runtime,"seconds.\n")
-save(loaloazipquad,file = "loaloazipquad-20210106-constrequal-prevpriors.RData")
-# load(file = "loaloazipquad-20210106-constrequal-prevpriors.RData")
+save(loaloazipquad,file = "loaloazipquad-20210208-constrequal-prevpriors.RData")
+# load(file = "loaloazipquad-20210208-constrequal-prevpriors.RData")
 
 
 ## Sampling ##
@@ -234,6 +234,7 @@ simulate_spatial_fields <- function(U,theta,pointsdata,resolution = list(nrow = 
 
 
 # Post samples
+set.seed(80979)
 loazippostsamples <- aghq::sample_marginal(loaloazipquad,100)
 nn <- nrow(loazippostsamples$samps)
 UUzip <- loazippostsamples$samps[1:(nn/2), ]
@@ -259,18 +260,18 @@ fieldbrickrisk <- simulate_spatial_fields(
 runtime <- difftime(Sys.time(),tm,units='secs')
 cat("Run time for fieldbrickzip:",runtime,"seconds.\n")
 
-save(loazippostsamples,file = "loaloazipquad-20210106-postsamples.RData")
-raster::writeRaster(fieldbrickzip,file = "loaloazipquad-20210106-fieldbrickzip.grd")
-raster::writeRaster(fieldbrickrisk,file = "loaloazipquad-20210106-fieldbrickrisk.grd")
+save(loazippostsamples,file = "loaloazipquad-20210208-postsamples.RData")
+raster::writeRaster(fieldbrickzip,file = "loaloazipquad-20210208-fieldbrickzip.grd",overwrite = FALSE)
+raster::writeRaster(fieldbrickrisk,file = "loaloazipquad-20210208-fieldbrickrisk.grd",overwrite = FALSE)
 
-# load(file = "loaloazipquad-20210106-postsamples.RData")
-# fieldbrickzip <- raster::brick("loaloazipquad-20210106-fieldbrickzip.grd")
-# fieldbrickrisk <- raster::brick("loaloazipquad-20210106-fieldbrickrisk.grd")
+# load(file = "loaloazipquad-20210208-postsamples.RData")
+# fieldbrickzip <- raster::brick("loaloazipquad-20210208-fieldbrickzip.grd")
+# fieldbrickrisk <- raster::brick("loaloazipquad-20210208-fieldbrickrisk.grd")
 
 
 # Posterior means
 simfieldsmeanzip <- calc(fieldbrickzip,function(x) mean(1 / (1 + exp(-x))))
-simfieldsmeanrisk <- calc(fieldbrickrisk,function(x) mean(1 / (1 + exp(-x))))
+simfieldsmeanrisk <- calc( (1/(1+exp(-fieldbrickzip))) * (1 /(1+exp(-fieldbrickrisk))),mean)
 
 # Exceedence probabilities
 
@@ -318,7 +319,7 @@ mapmisc::legendBreaks('right', predcols, cex=1, bty='o',inset = 0.01)
 dev.off()
 
 # Mean of lam
-plotraster <- simfieldsmeanrisk * simfieldsmeanzip
+plotraster <- simfieldsmeanrisk
 
 predcols <- mapmisc::colourScale(
   plotraster,
