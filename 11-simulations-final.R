@@ -8,8 +8,13 @@ library(Matrix)
 library(parallel)
 options(mc.cores = parallel::detectCores())
 
+set.seed(8907342)
+
 # Global constants
-globalpath <- "~/phd/projects/best-friends-gang/normalizing-constant/"
+# globalpath <- "~/phd/projects/best-friends-gang/normalizing-constant/"
+globalpath <- tempdir()
+plotpath <- file.path(globalpath,"figures")
+if (!dir.exists(plotpath)) dir.create(plotpath)
 
 # Function to approximate
 
@@ -126,25 +131,25 @@ simplotk11 <- thesimframe %>%
   labs(y = "")
 
 ggsave(
-  filename = paste0(globalpath,"figures/sims-poisson-gamma/relratescatterplot3.pdf"),
+  filename = file.path(plotpath,paste0("relratescatterplot3.pdf")),
   plot = simplotk3,
   width = 7,
   height = 7)
 
 ggsave(
-  filename = paste0(globalpath,"figures/sims-poisson-gamma/relratescatterplot5.pdf"),
+  filename = file.path(plotpath,paste0("relratescatterplot5.pdf")),
   plot = simplotk5,
   width = 7,
   height = 7)
 
 ggsave(
-  filename = paste0(globalpath,"figures/sims-poisson-gamma/relratescatterplot7.pdf"),
+  filename = file.path(plotpath,paste0("relratescatterplot7.pdf")),
   plot = simplotk7,
   width = 7,
   height = 7)
 
 ggsave(
-  filename = paste0(globalpath,"figures/sims-poisson-gamma/relratescatterplot11.pdf"),
+  filename = file.path(plotpath,paste0("relratescatterplot11.pdf")),
   plot = simplotk11,
   width = 7,
   height = 7)

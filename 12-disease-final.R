@@ -4,30 +4,28 @@
 # install.packages("EpiILMCT")
 library(tidyverse)
 library(TMB)
-library(EpiILMCT)
-library(plot3D)
-library(trustOptim)
+precompile()
+library(tmbstan)
 library(Matrix)
 library(parallel)
 options(mc.cores = parallel::detectCores())
 library(aghq)
 
-globalpath <- "~/phd/projects/best-friends-gang/normalizing-constant/"
-plotpath <- paste0(globalpath,"figures/disease/")
+set.seed(573489)
+
+globalpath <- tempdir()
+plotpath <- file.path(globalpath,"disease")
+if (!dir.exists(plotpath)) dir.create(plotpath)
+plotstamp <- '-2021-05-12'
 
 # Get the Tomato disease data
 data("tswv", package = "EpiILMCT")
 
 ## TMB ##
-
-precompile()
-setwd("~/phd/projects/best-friends-gang/normalizing-constant/code/")
-
-# Compile-- only need to do if source has changed
-# compile("02_disease.cpp") # Optimized
-# compile("02_disease.cpp","-O0 -g") # Unoptimized, accurate line numbers for debugging
-
-dyn.load(dynlib("02_disease"))
+# get the template from the aghq package
+file.copy(system.file('extsrc/02_disease.cpp',package='aghq'),globalpath)
+compile(file.path(globalpath,'02_disease.cpp'))
+dyn.load(dynlib(file.path(globalpath,"02_disease")))
 
 # Create the functions
 dat <- tswv$tswvsir
@@ -53,25 +51,26 @@ ff <- MakeADFun(data = datlist,
 
 # AGHQ ----
 
+cntrl <- default_control(negate = TRUE)
 resultslist <- list(
-  aghq(ff,3,c(0,0)),
-  aghq(ff,5,c(0,0)),
-  aghq(ff,7,c(0,0)),
-  aghq(ff,9,c(0,0)),
-  aghq(ff,11,c(0,0)),
-  aghq(ff,13,c(0,0))
+  aghq(ff,3,c(0,0),control = cntrl),
+  aghq(ff,5,c(0,0),control = cntrl),
+  aghq(ff,7,c(0,0),control = cntrl),
+  aghq(ff,9,c(0,0),control = cntrl),
+  aghq(ff,11,c(0,0),control = cntrl),
+  aghq(ff,13,c(0,0),control = cntrl)
 )
 names(resultslist) <- seq(3,13,by=2)
 
 # Timing
 
 microbenchmark::microbenchmark(
-  aghq(ff,3,c(0,0)),
-  aghq(ff,5,c(0,0)),
-  aghq(ff,7,c(0,0)),
-  aghq(ff,9,c(0,0)),
-  aghq(ff,11,c(0,0)),
-  aghq(ff,13,c(0,0))
+  aghq(ff,3,c(0,0),control = cntrl),
+  aghq(ff,5,c(0,0),control = cntrl),
+  aghq(ff,7,c(0,0),control = cntrl),
+  aghq(ff,9,c(0,0),control = cntrl),
+  aghq(ff,11,c(0,0),control = cntrl),
+  aghq(ff,13,c(0,0),control = cntrl)
 )
 
 # Unit: milliseconds
@@ -91,35 +90,21 @@ microbenchmark::microbenchmark(
 .815 * 110000/3408
 
 # Get the MCMC results
-# nsim <- 110000
-# nchains <- 4
-# 
-# covsus <- list(NULL)
-# covsus[[1]] <- list(0.02, c("gamma", 1, 0.01, 0.01))
-# covsus[[2]] <- rep(1, length(tswv$tswvsir$epidat[,1]))
-# kernel1 <- list(2, c("gamma", 1, 0.01, 0.1))
-# set.seed(524837)
-# system.time({
-#   tswv.full.observed <- epictmcmc(object = tswv$tswvsir, 
-#                                   distancekernel = "powerlaw",
-#                                   datatype = "known epidemic",
-#                                   nsim = nsim, 
-#                                   nchains = nchains,
-#                                   parallel = TRUE,
-#                                   control.sus = covsus, 
-#                                   kernel.par = kernel1)
-# })
-# plot(tswv.full.observed,plottype = "parameter", start = 10001, thin = 10,density = FALSE)
-# # 110000 iter, 4 chains in parallel: 3408 secs (about an hour)
-# save(tswv.full.observed,file = paste0(globalpath,"results/sir-mcmc-20200717.RData"))
-load(paste0(globalpath,"results/sir-mcmc-20200717.RData"))
+stanmod <- tmbstan(
+  ff,
+  chains = 4,
+  cores = 4,
+  iter = 1e04,
+  warmup = 1e03,
+  init = c(0,0),
+  seed = 124698,
+  algorithm = "NUTS"
+)
 
-postsamps <- tswv.full.observed$parameter.samples %>%
-  map(as.data.frame) %>%
-  map(as_tibble) %>%
-  map(~slice(.x,10001:110000)) %>%
-  reduce(bind_rows) %>%
-  rename(alpha = `Alpha_s[1]`,beta = `Spatial parameter`)
+postsamps <- as.data.frame(stanmod)
+postsamps$alpha <- exp(postsamps[ ,1])
+postsamps$beta <- exp(postsamps[ ,2])
+postsamps <- postsamps[ ,c('alpha','beta')]
 
 postmeans <- apply(postsamps,2,mean)
 postsd <- apply(postsamps,2,sd)
@@ -129,12 +114,12 @@ postquantiles97.5 <- apply(postsamps,2,function(x) quantile(x,.975))
 mcmcplotalpha <- postsamps %>%
   ggplot(aes(x = alpha)) +
   theme_classic() +
-  geom_histogram(aes(y = ..density..),bins = 100,colour = "transparent",fill = "grey",alpha = .5)
+  geom_histogram(aes(y = ..density..),bins = 50,colour = "transparent",fill = "grey",alpha = .5)
 
 mcmcplotbeta <- postsamps %>%
   ggplot(aes(x = beta)) +
   theme_classic() +
-  geom_histogram(aes(y = ..density..),bins = 100,colour = "transparent",fill = "grey",alpha = .5)
+  geom_histogram(aes(y = ..density..),bins = 50,colour = "transparent",fill = "grey",alpha = .5)
 
 get_plots <- function(K) {
   # Get:
@@ -188,26 +173,25 @@ theplots <- list(
 )
 names(theplots) <- seq(3,7,by=2)
 
-# Save plots to disk
 
-ggsave(paste0(plotpath,"disease-alpha-K3-20201012.pdf"),
+ggsave(file.path(plotpath,paste0("disease-alpha-K3-",plotstamp,".pdf")),
        theplots[["3"]]$alpha,
        width = 7,height = 7)
-ggsave(paste0(plotpath,"disease-alpha-K5-20201012.pdf"),
+ggsave(file.path(plotpath,paste0("disease-alpha-K5-",plotstamp,".pdf")),
        theplots[["5"]]$alpha,
        width = 7,height = 7)
-ggsave(paste0(plotpath,"disease-alpha-K7-20201012.pdf"),
+ggsave(file.path(plotpath,paste0("disease-alpha-K7-",plotstamp,".pdf")),
        theplots[["7"]]$alpha,
        width = 7,height = 7)
 
-ggsave(paste0(plotpath,"disease-beta-K3-20201012.pdf"),
-       summaries[["3"]]$beta,
+ggsave(file.path(plotpath,paste0("disease-beta-K3-",plotstamp,".pdf")),
+       theplots[["3"]]$beta,
        width = 7,height = 7)
-ggsave(paste0(plotpath,"disease-beta-K5-20201012.pdf"),
-       summaries[["5"]]$beta,
+ggsave(file.path(plotpath,paste0("disease-beta-K5-",plotstamp,".pdf")),
+       theplots[["5"]]$beta,
        width = 7,height = 7)
-ggsave(paste0(plotpath,"disease-beta-K7-20201012.pdf"),
-       summaries[["7"]]$beta,
+ggsave(file.path(plotpath,paste0("disease-beta-K7-",plotstamp,".pdf")),
+       theplots[["7"]]$beta,
        width = 7,height = 7)
 
 # Summaries
@@ -219,6 +203,20 @@ get_summaries <- function(K) {
   alphaquants <- exp(compute_quantiles(results$marginals[[1]]))
   betaquants <- exp(compute_quantiles(results$marginals[[2]]))
   
+  aghqpostsamps <- sample_marginal(results,nrow(postsamps))
+  
+  suppressWarnings({
+    ks_alpha <- ks.test(
+      postsamps$alpha,
+      exp(aghqpostsamps[[1]])
+    )$statistic
+    
+    ks_beta <- ks.test(
+      postsamps$beta,
+      exp(aghqpostsamps[[2]])
+    )$statistic
+  })
+  
   tibble(
     alphamean = themeans[1],
     betamean = themeans[2],
@@ -227,10 +225,15 @@ get_summaries <- function(K) {
     alpha2.5 = alphaquants[1],
     beta2.5 = betaquants[1],
     alpha97.5 = alphaquants[2],
-    beta97.5 = betaquants[2]
+    beta97.5 = betaquants[2],
+    ks_alpha = ks_alpha,
+    ks_beta = ks_beta
   )
 }
 
-map(seq(3,13,by=2),get_summaries) %>% reduce(bind_rows)
+postsummaries <- map(seq(3,13,by=2),get_summaries) %>% reduce(bind_rows)
+readr::write_csv(postsummaries,file.path(plotpath,paste0("posteriorsummarytable-",plotstamp,".csv")))
+
+
 
 

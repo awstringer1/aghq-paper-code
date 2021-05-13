@@ -3,38 +3,32 @@
 library(tidyverse)
 library(patchwork)
 library(TMB)
+library(tmbstan)
 library(ipoptr)
 library(aghq)
 library(Matrix)
-## Load data ##
-data(gcdatalist)
-## Create function objects using TMB ##
+
+data(gcdatalist,package = 'aghq')
 precompile()
-setwd("~/phd/projects/best-friends-gang/normalizing-constant/code/")
-# Compile-- only need to do if source has changed
-# compile("01_astro.cpp")
-dyn.load(dynlib("01_astro"))
-thetastart <- c(0.730,0.515,-3.219,-0.672) # From Eadie and Harris (2016)
-# Function and its derivatives
-ff <- MakeADFun(data = gcdatalist,
-                parameters = list(theta1 = thetastart[1],
-                                  theta2 = thetastart[2],
-                                  theta3 = thetastart[3],
-                                  theta4 = thetastart[4]
-                ),
-                DLL = "01_astro",
-                ADreport = FALSE,
-                silent = TRUE)
-# Nonlinear constraints and their jacobian
-Es <- MakeADFun(data = gcdatalist,
-                parameters = list(theta1 = thetastart[1],
-                                  theta2 = thetastart[2],
-                                  theta3 = thetastart[3],
-                                  theta4 = thetastart[4]
-                ),
-                DLL = "01_astro",
-                ADreport = TRUE,
-                silent = TRUE)
+
+savestamp <- "20210417-v1"
+
+set.seed(4365789)
+
+globalpath <- tempdir()
+plotpath <- file.path(globalpath,"astro")
+if (!dir.exists(plotpath)) dir.create(plotpath)
+plotstamp <- '-2021-05-12'
+
+# Get the Tomato disease data
+data("tswv", package = "EpiILMCT")
+
+## TMB ##
+# get the template from the aghq package
+file.copy(system.file('extsrc/01_astro.cpp',package='aghq'),globalpath)
+compile(file.path(globalpath,'01_astro.cpp'))
+dyn.load(dynlib(file.path(globalpath,"01_astro")))
+
 ## Parameter transformations ##
 parambounds <- list(
   Psi0 = c(1,200),
@@ -115,6 +109,9 @@ upperbounds <- c(
   get_theta4(parambounds$beta[1] + .01)
 )
 
+# Start in the middle
+thetastart <- (upperbounds + lowerbounds)/2
+
 
 # Nonlinear constraints, specified as a function
 ipopt_nonlinear_constraints <- function(theta) Es$fn(theta)
@@ -135,12 +132,33 @@ ipopt_nonlinear_constraints_jacobian_structure <- function(theta) {
 nonlinear_lowerbound <- rep(0,nrow(gcdata)+2)
 nonlinear_upperbound <- rep(Inf,nrow(gcdata)+2)
 
+# Function and its derivatives
+ff <- MakeADFun(data = gcdatalist,
+                parameters = list(theta1 = thetastart[1],
+                                  theta2 = thetastart[2],
+                                  theta3 = thetastart[3],
+                                  theta4 = thetastart[4]
+                ),
+                DLL = "01_astro",
+                ADreport = FALSE,
+                silent = TRUE)
+# Nonlinear constraints and their jacobian
+Es <- MakeADFun(data = gcdatalist,
+                parameters = list(theta1 = thetastart[1],
+                                  theta2 = thetastart[2],
+                                  theta3 = thetastart[3],
+                                  theta4 = thetastart[4]
+                ),
+                DLL = "01_astro",
+                ADreport = TRUE,
+                silent = TRUE)
+
 stopifnot(all(ipopt_nonlinear_constraints(thetastart) > 0))
 
 tm <- Sys.time()
 tmp <- capture.output(# Run quietly
   ipopt_result <- ipoptr::ipoptr(
-    x0 = thetastart,
+    x0 = (upperbounds + lowerbounds)/2,
     eval_f = ipopt_objective,
     eval_grad_f = ipopt_objective_gradient,
     eval_h = ipopt_objective_hessian_x,
@@ -152,7 +170,7 @@ tmp <- capture.output(# Run quietly
     ub = upperbounds,
     constraint_lb = nonlinear_lowerbound,
     constraint_ub = nonlinear_upperbound,
-    opts = list(obj_scaling_factor = -1,
+    opts = list(obj_scaling_factor = 1,
                 tol = 1e-03)
   )
 )
@@ -161,25 +179,49 @@ cat('Run time for mass model optimization:',optruntime,'seconds.\n')
 
 ## AGHQ ----
 # Create the optimization template
-useropt <- list(
-  ff = ff,
-  mode = ipopt_result$solution,
-  hessian = -1 * ff$he(ipopt_result$solution)
+ffa <- list(
+  fn = function(x) -1*ff$fn(x),
+  gr = function(x) -1*ff$gr(x),
+  he = function(x) -1*ff$he(x)
 )
+useropt <- list(
+  ff = ffa,
+  mode = ipopt_result$solution,
+  hessian = ff$he(ipopt_result$solution)
+)
+cntrl <- aghq::default_control(negate = TRUE)
+
 # Do the quadrature
 tm <- Sys.time()
-astroquad <- aghq::aghq(ff,3,thetastart,optresults = useropt)
+astroquad <- aghq::aghq(ff,5,thetastart,optresults = useropt,control = cntrl)
 quadruntime <- difftime(Sys.time(),tm,units = 'secs')
 cat("Run time for mass model quadrature:",quadruntime,"seconds.\n")
 
 # Total time
-optruntime + quadruntime
+optruntime + quadruntime # Time difference of 1.010533 secs 2021/04/19
 
+## MCMC ----
+stanmod <- tmbstan(
+  ff,
+  chains = 4,
+  cores = 4,
+  iter = 1e04,
+  warmup = 1e03,
+  init = ipopt_result$x0,
+  seed = 48645,
+  algorithm = "NUTS"
+)
+# Time
+get_elapsed_time(stanmod)
+# warmup  sample
+# chain:1 1.330630 5.05151
+# chain:2 0.912805 4.52549
+# chain:3 0.812718 4.90522
+# chain:4 0.810394 4.17531
+mean(apply(get_elapsed_time(stanmod),1,sum)) # 5.63 seconds
 
 # Inference
 
-summary(astroquad)
-# plot(astroquad) # Produces 8 plots, too large for paper
 # Manually plot
 parambounds <- list(
   Psi0 = c(1,200),
@@ -231,14 +273,27 @@ gammaprior <- function(gamma) dunif(gamma,parambounds$gamma[1],parambounds$gamma
 alphaprior <- function(alpha) dgamma(alpha - parambounds$alpha[1],shape = 1,rate = 4.6,log = FALSE)
 betaprior <- function(beta) dunif(beta,parambounds$beta[1],parambounds$beta[2],log = FALSE)
 
+standata <- as.data.frame(stanmod)
+standata$psi0 <- get_psi0(standata[ ,1])
+standata$gamma <- get_gamma(standata[ ,2])
+standata$alpha <- get_alpha(standata[ ,3])
+standata$beta <- get_beta(standata[ ,4])
 
-## Plots
+
+## Plots ----
 PLOTTEXTSIZE <- 28
 
 psi0_postplot <- psi0pdf %>%
-  ggplot(aes(x = transparam,y = pdf_transparam)) +
+  ggplot(aes(x = transparam)) +
   theme_classic() +
-  geom_line(size = 1) +
+  geom_histogram(
+    data = standata,
+    mapping = aes(x = psi0,y = ..density..),
+    bins = 50,
+    colour = 'transparent',
+    fill = "grey"
+  ) +
+  geom_line(aes(y = pdf_transparam),size = 1) +
   stat_function(fun = Psi0prior,linetype = "dashed") +
   labs(title = "",x = "",y = "Density") +
   scale_x_continuous(breaks = seq(10,60,by = 5)) +
@@ -248,6 +303,13 @@ psi0_postplot <- psi0pdf %>%
 gamma_postplot <- gammapdf %>%
   ggplot(aes(x = transparam,y = pdf_transparam)) +
   theme_classic() +
+  geom_histogram(
+    data = standata,
+    mapping = aes(x = gamma,y = ..density..),
+    bins = 100,
+    colour = 'transparent',
+    fill = "grey"
+  ) +
   geom_line(size = 1) +
   stat_function(fun = gammaprior,linetype = "dashed") +
   labs(title = "",x = "",y = "Density") +
@@ -258,25 +320,37 @@ gamma_postplot <- gammapdf %>%
 alpha_postplot <- alphapdf %>%
   ggplot(aes(x = transparam,y = pdf_transparam)) +
   theme_classic() +
-  geom_line(size = 1) +
+  geom_histogram(
+    data = standata,
+    mapping = aes(x = alpha,y = ..density..),
+    bins = 2000,
+    colour = 'transparent',
+    fill = "grey"
+  ) +
+  geom_line(size = 1)  +
   stat_function(fun = alphaprior,linetype = "dashed") +
   labs(title = "",x = "",y = "Density") +
   scale_x_continuous(breaks = seq(3,4,by = .02)) +
-  coord_cartesian(xlim = c(3,3.1)) +
+  coord_cartesian(xlim = c(3,3.05)) +
   theme(text = element_text(size = PLOTTEXTSIZE))
 
 
 beta_postplot <- betapdf %>%
   ggplot(aes(x = transparam,y = pdf_transparam)) +
   theme_classic() +
-  geom_line(size = 1) +
+  geom_histogram(
+    data = standata,
+    mapping = aes(x = beta,y = ..density..),
+    bins = 50,
+    colour = 'transparent',
+    fill = "grey"
+  ) +
+  geom_line(size = 1)  +
   labs(title = "",x = "",y = "Density") +
   stat_function(fun = betaprior,linetype = "dashed") +
   scale_x_continuous(breaks = seq(-.5,1,by = .1)) +
   coord_cartesian(xlim = c(-.3,.4)) +
   theme(text = element_text(size = PLOTTEXTSIZE))
-
-(psi0_postplot | gamma_postplot) / (alpha_postplot | beta_postplot)
 
 # Cumulative mass profile
 Mr <- function(r,theta) {
@@ -321,12 +395,25 @@ cummassplot <- tibble(
   scale_y_continuous(breaks = seq(0,1,by=.1)) +
   theme(text = element_text(size = PLOTTEXTSIZE))
 
+ggsave(file.path(plotpath,paste0("psi0postplot-",savestamp,".pdf")),psi0_postplot,width = 7,height = 7)
+ggsave(file.path(plotpath,paste0("gammapostplot-",savestamp,".pdf")),gamma_postplot,width = 7,height = 7)
+ggsave(file.path(plotpath,paste0("alphapostplot-",savestamp,".pdf")),alpha_postplot,width = 7,height = 7)
+ggsave(file.path(plotpath,paste0("betapostplot-",savestamp,".pdf")),beta_postplot,width = 7,height = 7)
+ggsave(file.path(plotpath,paste0("massplot-",savestamp,".pdf")),cummassplot,width = 7,height = 7)
+
+# KS statistic
+
+aghqpostsamps <- sample_marginal(astroquad,nrow(standata))
+
+suppressWarnings({
+  kstable <- data.frame(
+    psi0 = ks.test(standata[[1]],aghqpostsamps[[1]])$statistic,
+    gamma = ks.test(standata[[2]],aghqpostsamps[[2]])$statistic,
+    alpha = ks.test(standata[[3]],aghqpostsamps[[3]])$statistic,
+    beta = ks.test(standata[[4]],aghqpostsamps[[4]])$statistic
+  )
+})
+
+readr::write_csv(kstable,file.path(plotpath,paste0("kstable-",savestamp,".csv")))
 
 
-plotpath <- "~/phd/projects/best-friends-gang/normalizing-constant/figures/astro/"
-
-ggsave(paste0(plotpath,"psi0postplot-v3.pdf"),psi0_postplot,width = 7,height = 7)
-ggsave(paste0(plotpath,"gammapostplot-v3.pdf"),gamma_postplot,width = 7,height = 7)
-ggsave(paste0(plotpath,"alphapostplot-v3.pdf"),alpha_postplot,width = 7,height = 7)
-ggsave(paste0(plotpath,"betapostplot-v3.pdf"),beta_postplot,width = 7,height = 7)
-ggsave(paste0(plotpath,"massplot-v3.pdf"),cummassplot,width = 7,height = 7)

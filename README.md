@@ -8,10 +8,27 @@ The examples all make use of the `aghq` package, available [on github](https://g
 
 The following files may be run to recreate the examples from the paper:
 
-- **Simulations (Section 5)**: file `11-simulations-final.R`.
+- **Section 4.1**: file `12-disease-final.R`.
 
-- **Example 6.1**: file `12-disease-final.R`. The `TMB` function template `02_disease.cpp` must be compiled once beforehand, using the `compile()` call in the `.R` file. The saved `MCMC` results can be downloaded [here](https://drive.google.com/file/d/1_ogYlDHsmQYTviCLqdwiCrxOhLmHoTJ7/view?usp=sharing).
+- **Section 4.2**: file `13-astro-final.R`.
 
-- **Example 6.2**: file `13-astro-final.R`. The `TMB` function template `01_astro.cpp` must be compiled once beforehand, using the `compile()` call in the `.R` file.
+- **Section 5.2**: file `05-loaloazip.R`. 
+  - Takes a few hours at the resolution shown in the paper; the default in the script
+  produces lower-resolution spatial interpolations and runs in 5 -- 10 minutes or so.
+  
+  - The `MCMC` run took 66 hours on my server. By default the `domcmc` flag is set
+  to `FALSE`.
 
-- **Example 7.1**: file `10-zip-loaloa.R`. The `TMB` function template `10_loaloazip.cpp` must be compiled once beforehand, using the `compile()` call in the `.R` file.
+- **Section S.5**: file `11-simulations-final.R`.
+
+- **Section S.6**: file `06-loaloazipsims.R`
+  - Takes a few hours.
+
+All files save results in a created subdirectory of `tempdir()`. To find them,
+run `tempdir()` and go to that directory.
+
+You will need to install other packages from `CRAN` as necessary within each script.
+The only non-`CRAN` package is `ipoptr` which requires a working installation of
+`IPOPT`, see [here](https://coin-or.github.io/Ipopt/INSTALL.html). This is laborious
+and is only required for the astro example (Section 4.2). Everything else should
+be pretty straightforward to run.
