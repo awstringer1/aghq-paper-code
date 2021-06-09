@@ -4,8 +4,6 @@ This repository contains the code used to implement the examples in **Stochastic
 
 The examples all make use of the `aghq` package, available [on github](https://github.com/awstringer1/aghq) as well as `CRAN` (`install.packages("aghq")`). A [vignette](https://arxiv.org/abs/2101.04468) for that package is also available.
 
-**Important note**: the results in the [preprint](https://arxiv.org/abs/2102.06801) all reproduce exactly when using the `CRAN` version 0.1.0 of the package. The package is under active development and later versions including the development (github) version may not always give the exact same results, though they should not be practically different.
-
 ## Code files
 
 The following files may be run to recreate the examples from the paper:
