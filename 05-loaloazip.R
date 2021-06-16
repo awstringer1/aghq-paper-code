@@ -22,7 +22,7 @@ reslist <- list(nrow = 50,ncol = 100)
 
 savestamp <- "20210505-v1"
 globalpath <- normalizePath(tempdir(),winslash='/')
-plotpath <- normalizePath(file.path(globalpath,"loaloazip"),winslash='/')
+plotpath <- normalizePath(file.path(globalpath,"loaloazip"),winslash='/',mustWork = FALSE)
 if (!dir.exists(plotpath)) dir.create(plotpath)
 savepath <- plotpath
 

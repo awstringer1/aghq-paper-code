@@ -14,7 +14,7 @@ library(aghq)
 set.seed(573489)
 
 globalpath <- normalizePath(tempdir(),winslash='/')
-plotpath <- normalizePath(file.path(globalpath,"disease"),winslash='/')
+plotpath <- normalizePath(file.path(globalpath,"disease"),winslash='/',mustWork = FALSE)
 if (!dir.exists(plotpath)) dir.create(plotpath)
 plotstamp <- '-2021-05-12'
 

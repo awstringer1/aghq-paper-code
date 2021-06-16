@@ -16,12 +16,9 @@ savestamp <- "20210417-v1"
 set.seed(4365789)
 
 globalpath <- normalizePath(tempdir(),winslash='/')
-plotpath <- normalizePath(file.path(globalpath,"astro"),winslash='/')
+plotpath <- normalizePath(file.path(globalpath,"astro"),winslash='/',mustWork = FALSE)
 if (!dir.exists(plotpath)) dir.create(plotpath)
 plotstamp <- '-2021-05-12'
-
-# Get the Tomato disease data
-data("tswv", package = "EpiILMCT")
 
 ## TMB ##
 # get the template from the aghq package
