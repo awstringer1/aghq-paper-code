@@ -12,8 +12,8 @@ set.seed(8907342)
 
 # Global constants
 # globalpath <- "~/phd/projects/best-friends-gang/normalizing-constant/"
-globalpath <- tempdir()
-plotpath <- file.path(globalpath,"figures")
+globalpath <- normalizePath(tempdir(),winslash='/')
+plotpath <- normalizePath(file.path(globalpath,"figures"),winslash='/')
 if (!dir.exists(plotpath)) dir.create(plotpath)
 
 # Function to approximate

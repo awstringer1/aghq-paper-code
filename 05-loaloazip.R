@@ -8,24 +8,32 @@ data(loaloa,package = "geostatsp")
 library(aghq)
 library(tmbstan)
 
-# Set the resolution for the spatial interpolations:
+# Set the resolution for the spatial interpolations.
 # The results shown in the paper use:
 # reslist <- list(nrow = 200,ncol = 400)
 # but this takes a couple hours. Here I set:
 reslist <- list(nrow = 50,ncol = 100)
+# which should take only a few minutes
+# Make sure you install the RandomFields package:
+# install.packages('RandomFields')
+# as this will speed up geostatsp::RFsimulate()
+# Note that these considerations are specific to this example's
+# post-processing and not related to the aghq method or package.
 
 savestamp <- "20210505-v1"
-globalpath <- tempdir()
-plotpath <- file.path(globalpath,"loaloazip")
+globalpath <- normalizePath(tempdir(),winslash='/')
+plotpath <- normalizePath(file.path(globalpath,"loaloazip"),winslash='/')
 if (!dir.exists(plotpath)) dir.create(plotpath)
 savepath <- plotpath
 
-file.copy(system.file('extsrc/05_loaloazip.cpp',package='aghq'),globalpath)
+file.copy(
+  normalizePath(system.file('extsrc/05_loaloazip.cpp',package='aghq'),winslash='/'),
+  globalpath
+)
 
 # Compile TMB template-- only need to do once
-compile(file.path(globalpath,"05_loaloazip.cpp"))
-dyn.load(dynlib(file.path(globalpath,"05_loaloazip")))
-
+compile(normalizePath(file.path(globalpath,"05_loaloazip.cpp"),winslash='/'))
+dyn.load(normalizePath(dynlib(file.path(globalpath,"05_loaloazip")),winslash='/'))
 
 # Flags, which analysis to do?
 doaghq <- TRUE

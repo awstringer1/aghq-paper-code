@@ -15,8 +15,8 @@ savestamp <- "20210417-v1"
 
 set.seed(4365789)
 
-globalpath <- tempdir()
-plotpath <- file.path(globalpath,"astro")
+globalpath <- normalizePath(tempdir(),winslash='/')
+plotpath <- normalizePath(file.path(globalpath,"astro"),winslash='/')
 if (!dir.exists(plotpath)) dir.create(plotpath)
 plotstamp <- '-2021-05-12'
 
@@ -25,9 +25,9 @@ data("tswv", package = "EpiILMCT")
 
 ## TMB ##
 # get the template from the aghq package
-file.copy(system.file('extsrc/01_astro.cpp',package='aghq'),globalpath)
-compile(file.path(globalpath,'01_astro.cpp'))
-dyn.load(dynlib(file.path(globalpath,"01_astro")))
+file.copy(normalizePath(system.file('extsrc/01_astro.cpp',package='aghq'),winslash='/'),globalpath)
+compile(normalizePath(file.path(globalpath,'01_astro.cpp'),winslash='/'))
+dyn.load(normalizePath(dynlib(file.path(globalpath,"01_astro")),winslash='/'))
 
 ## Parameter transformations ##
 parambounds <- list(

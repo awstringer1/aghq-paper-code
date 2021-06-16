@@ -13,8 +13,8 @@ library(aghq)
 
 set.seed(573489)
 
-globalpath <- tempdir()
-plotpath <- file.path(globalpath,"disease")
+globalpath <- normalizePath(tempdir(),winslash='/')
+plotpath <- normalizePath(file.path(globalpath,"disease"),winslash='/')
 if (!dir.exists(plotpath)) dir.create(plotpath)
 plotstamp <- '-2021-05-12'
 
@@ -23,9 +23,10 @@ data("tswv", package = "EpiILMCT")
 
 ## TMB ##
 # get the template from the aghq package
-file.copy(system.file('extsrc/02_disease.cpp',package='aghq'),globalpath)
-compile(file.path(globalpath,'02_disease.cpp'))
-dyn.load(dynlib(file.path(globalpath,"02_disease")))
+file.copy(normalizePath(system.file('extsrc/02_disease.cpp',package='aghq'),winslash='/'),globalpath)
+compile(normalizePath(file.path(globalpath,'02_disease.cpp'),winslash='/'))
+dyn.load(normalizePath(dynlib(file.path(globalpath,"02_disease")),winslash='/'))
+
 
 # Create the functions
 dat <- tswv$tswvsir

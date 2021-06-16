@@ -14,15 +14,19 @@ library(aghq)
 library(tmbstan)
 
 savestamp <- "20210505-v1"
-globalpath <- tempdir()
-plotpath <- file.path(globalpath,"loaloazip")
+globalpath <- normalizePath(tempdir(),winslash='/')
+plotpath <- normalizePath(file.path(globalpath,"loaloazip"),winslash='/')
 if (!dir.exists(plotpath)) dir.create(plotpath)
 savepath <- plotpath
 
-file.copy(system.file('extsrc/05_loaloazip.cpp',package='aghq'),globalpath)
-compile(file.path(globalpath,"05_loaloazip.cpp"))
-dyn.load(dynlib(file.path(globalpath,"05_loaloazip")))
+file.copy(
+  normalizePath(system.file('extsrc/05_loaloazip.cpp',package='aghq'),winslash='/'),
+  globalpath
+)
 
+# Compile TMB template-- only need to do once
+compile(normalizePath(file.path(globalpath,"05_loaloazip.cpp"),winslash='/'))
+dyn.load(normalizePath(dynlib(file.path(globalpath,"05_loaloazip")),winslash='/'))
 
 ## Setup ----
 
