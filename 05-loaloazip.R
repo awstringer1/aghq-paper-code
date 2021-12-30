@@ -37,9 +37,9 @@ dyn.load(normalizePath(dynlib(file.path(globalpath,"05_loaloazip")),winslash='/'
 
 # Flags, which analysis to do?
 doaghq <- TRUE
-domcmc <- FALSE
+domcmc <- TRUE
 dopostsamplingaghq <- TRUE
-dopostsamplingmcmc <- FALSE
+dopostsamplingmcmc <- TRUE
 
 # Initialize time variables
 aghqtime <- 0
