@@ -10,9 +10,9 @@ library(tmbstan)
 
 # Set the resolution for the spatial interpolations.
 # The results shown in the paper use:
-# reslist <- list(nrow = 200,ncol = 400)
+reslist <- list(nrow = 200,ncol = 400)
 # but this takes a couple hours. Here I set:
-reslist <- list(nrow = 50,ncol = 100)
+# reslist <- list(nrow = 50,ncol = 100)
 # which should take only a few minutes
 # Make sure you install the RandomFields package:
 # install.packages('RandomFields')
@@ -20,7 +20,7 @@ reslist <- list(nrow = 50,ncol = 100)
 # Note that these considerations are specific to this example's
 # post-processing and not related to the aghq method or package.
 
-savestamp <- "20210505-v1"
+savestamp <- "20211230-v1"
 globalpath <- normalizePath(tempdir(),winslash='/')
 plotpath <- normalizePath(file.path(globalpath,"loaloazip"),winslash='/',mustWork = FALSE)
 if (!dir.exists(plotpath)) dir.create(plotpath)
@@ -183,8 +183,8 @@ simulate_spatial_fields <- function(U,
   
   # Compute matrix of var, range, shape
   modpar <- cbind(
-    var = get_sigma(exp(theta$theta1),exp(theta$theta2))^2,
-    range = get_rho(exp(theta$theta1),exp(theta$theta2)),
+    var = get_sigma(exp(theta$logkappa),exp(theta$logtau))^2,
+    range = get_rho(exp(theta$logkappa),exp(theta$logtau)),
     shape = maternconstants$nu
   )
   
@@ -304,7 +304,7 @@ if (dopostsamplingmcmc) {
   postBeta <- samps[idx,c(191,382)]
   
   theta <- samps[idx,c(383,384)]
-  colnames(theta) <- c('theta1','theta2')
+  colnames(theta) <- c('logkappa','logtau')
   
   tm <- Sys.time()
   fieldbrickzip <- simulate_spatial_fields(
