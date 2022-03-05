@@ -1,4 +1,5 @@
 ### Loa Loa Zip Model ###
+# Fix the intercepts for MCMC at the AGHQ estimates, to get MCMC to run.
 
 ## Load the data ##
 library(TMB)
@@ -7,6 +8,12 @@ library(geostatsp)
 data(loaloa,package = "geostatsp")
 library(aghq)
 library(tmbstan)
+
+library(parallel)
+options(mc.cores = parallel::detectCores())
+
+library(ggplot2)
+
 
 # Set the resolution for the spatial interpolations.
 # The results shown in the paper use:
@@ -20,26 +27,38 @@ reslist <- list(nrow = 200,ncol = 400)
 # Note that these considerations are specific to this example's
 # post-processing and not related to the aghq method or package.
 
-savestamp <- "20211230-v1"
+savestamp <- "20220116-v1"
 globalpath <- normalizePath(tempdir(),winslash='/')
 plotpath <- normalizePath(file.path(globalpath,"loaloazip"),winslash='/',mustWork = FALSE)
+# globalpath <- "~/phd/projects/best-friends-gang/normalizing-constant"
+# plotpath <- normalizePath(file.path(globalpath,"figures/revision"),winslash='/',mustWork = FALSE)
 if (!dir.exists(plotpath)) dir.create(plotpath)
 savepath <- plotpath
+# savepath <- "~/data/loaloazip"
+tmbpath <- tempdir()
+
 
 file.copy(
   normalizePath(system.file('extsrc/05_loaloazip.cpp',package='aghq'),winslash='/'),
-  globalpath
+  tmbpath
+)
+file.copy(
+  normalizePath(system.file('extsrc/05_loaloazip_fixedparam.cpp',package='aghq'),winslash='/'),
+  tmbpath
 )
 
+
 # Compile TMB template-- only need to do once
-compile(normalizePath(file.path(globalpath,"05_loaloazip.cpp"),winslash='/'))
-dyn.load(normalizePath(dynlib(file.path(globalpath,"05_loaloazip")),winslash='/'))
+compile(normalizePath(file.path(tmbpath,"05_loaloazip.cpp"),winslash='/'))
+dyn.load(normalizePath(dynlib(file.path(tmbpath,"05_loaloazip")),winslash='/'))
+compile(normalizePath(file.path(tmbpath,"05_loaloazip_fixedparam.cpp"),winslash='/'))
+dyn.load(normalizePath(dynlib(file.path(tmbpath,"05_loaloazip_fixedparam")),winslash='/'))
 
 # Flags, which analysis to do?
 doaghq <- TRUE
-domcmc <- FALSE
+domcmc <- TRUE
 dopostsamplingaghq <- TRUE
-dopostsamplingmcmc <- FALSE
+dopostsamplingmcmc <- TRUE
 
 # Initialize time variables
 aghqtime <- 0
@@ -133,12 +152,40 @@ ff <- MakeADFun(data = datlist,
                 ADreport = FALSE,
                 silent = TRUE)
 
+# New TMB template- create and test
+betazifix <- 2.912111
+betariskfix <- -1.984655
+
+paraminitnew <- with(paraminit,list(
+  Uzi = W[1:190],
+  betazi = betazifix,
+  Urisk = W[192:381],
+  betarisk = betariskfix,
+  logkappa = log(get_kappa(startingsig,startingrho)),
+  logtau = log(get_tau(startingsig,startingrho))
+))
+
+datlistnew <- within(datlist,{
+  A <- as(as(Amat,'dgCMatrix'),'dgTMatrix')
+  X <- Xmat
+})
+datlistnew$design <- NULL
+ffnew <- MakeADFun(data = datlistnew,
+                parameters = paraminitnew,
+                # random = c("Uzi","Urisk","betarisk",'betazi'),
+                map = list(betazi = factor(NA),betarisk = factor(NA)),
+                DLL = "05_loaloazip_fixedparam",
+                ADreport = FALSE,
+                silent = TRUE)
+
+# stopifnot(as.numeric(with(ff,fn(par))) == as.numeric(with(ffnew,fn(par))))
+
 if (doaghq) {
   tm <- Sys.time()
   cat("Doing AGHQ, time = ",format(tm),"\n")
   loaloazipquad <- aghq::marginal_laplace_tmb(
     ff,
-    3,
+    7,
     startingvalue = c(paraminit$logkappa,paraminit$logtau)
   )
   aghqtime <- difftime(Sys.time(),tm,units = 'secs')
@@ -147,11 +194,23 @@ if (doaghq) {
 }
 
 ## MCMC ----
+# Do MCMC by FIXING the betas at their AGHQ estimates.
 if (domcmc){
+  paraminitmcmc <- paraminitnew
+  paraminitmcmc$betarisk <- ff$env$last.par.best[382]
+  paraminitmcmc$betazi <- ff$env$last.par.best[191]
+
+  ffmcmc <- MakeADFun(data = datlistnew,
+                     parameters = paraminitmcmc,
+                     map = list(betazi = factor(NA),betarisk = factor(NA)),
+                     DLL = "05_loaloazip_fixedparam",
+                     ADreport = FALSE,
+                     silent = TRUE)
+
   tm <- Sys.time()
   cat("Doing MCMC, time = ",format(tm),"\n")
   loaloazipmcmc <- tmbstan(
-    ff,
+    ffmcmc,
     chains = 8,
     cores = 8,
     iter = 1e04,
@@ -163,14 +222,6 @@ if (domcmc){
   mcmctime <- difftime(Sys.time(),tm,units = 'secs')
   save(loaloazipmcmc,file = file.path(savepath,paste0("loaloazipmcmc",savestamp,".RData")))
   cat("MCMC took: ",format(mcmctime),"\n")
-
-  # NOTE: for run the week of 15/04/2021, got the following warnings with default
-  # settings and 8 chains with 10,000 iterations (incl 1,000 warmups):
-  # There were 238 divergent transitions after warmup.
-  # There were 673 transitions after warmup that exceeded the maximum treedepth.
-  pdf(file = paste0(plotpath,"mcmc-pairs-plot",savestamp,".pdf"))
-  pairs(loaloazipmcmc,pars = c("W[191]","W[381]","logkappa","logtau"))
-  dev.off()
 }
 
 simulate_spatial_fields <- function(U,
@@ -210,10 +261,16 @@ if (dopostsamplingaghq) {
   cat("Doing AGHQ field simulations, time = ",format(tm),"\n")
   loazippostsamples <- sample_marginal(loaloazipquad,100)
   # Extract out the U and V
-  postU <- loazippostsamples$samps[c(1:190), ]
-  postV <- loazippostsamples$samps[c(192:381), ]
+  Uzi_idx <- which(rownames(loazippostsamples$samps)=="Uzi")
+  betazi_idx <- which(rownames(loazippostsamples$samps)=="betazi")
+  Urisk_idx <- which(rownames(loazippostsamples$samps)=="Urisk")
+  betarisk_idx <- which(rownames(loazippostsamples$samps)=="betarisk")
 
-  postBeta <- loazippostsamples$samps[c(191,382), ]
+  postU <- loazippostsamples$samps[Uzi_idx, ]
+  postV <- loazippostsamples$samps[Urisk_idx, ]
+
+  postBetazi <- loazippostsamples$samps[betazi_idx, ]
+  postBetarisk <- loazippostsamples$samps[betarisk_idx, ]
 
   tm <- Sys.time()
   fieldbrickzip <- simulate_spatial_fields(
@@ -229,8 +286,8 @@ if (dopostsamplingaghq) {
     resolution = reslist
   )
 
-  fieldbrickzip_withint <- fieldbrickzip + postBeta[1, ]
-  fieldbrickrisk_withint <- fieldbrickrisk + postBeta[2, ]
+  fieldbrickzip_withint <- fieldbrickzip + postBetazi
+  fieldbrickrisk_withint <- fieldbrickrisk + postBetarisk
 
   simfieldsmeanzip <- mean(1 / (1 + exp(-fieldbrickzip_withint)))
 
@@ -295,16 +352,21 @@ if (dopostsamplingmcmc) {
   cat("Doing MCMC field simulations, time = ",format(tm),"\n")
 
   samps <- as.data.frame(loaloazipmcmc)
+  Uzi_idx <- grep('Uzi',colnames(samps))
+  Urisk_idx <- grep("Urisk",colnames(samps))
+  theta_idx <- grep("log",colnames(samps))
+
   # Only do 100
   idx <- sample.int(nrow(samps),100)
 
-  postU <- t(samps[idx,c(1:190)])
-  postV <- t(samps[idx,c(192:381)])
+  postU <- t(samps[idx,Urisk_idx])
+  postV <- t(samps[idx,Uzi_idx])
 
-  postBeta <- samps[idx,c(191,382)]
+  # Fixed betas
+  postBetazi <- paraminitmcmc$betazi
+  postBetarisk <- paraminitmcmc$betarisk
 
-  theta <- samps[idx,c(383,384)]
-  colnames(theta) <- c('logkappa','logtau')
+  theta <- samps[idx,theta_idx]
 
   tm <- Sys.time()
   fieldbrickzip <- simulate_spatial_fields(
@@ -319,9 +381,11 @@ if (dopostsamplingmcmc) {
     loaloa,
     resolution = reslist
   )
+  cat(difftime(Sys.time(),tm,units='secs'),'seconds')
 
-  fieldbrickzip_withint <- fieldbrickzip + postBeta[ ,1]
-  fieldbrickrisk_withint <- fieldbrickrisk + postBeta[ ,2]
+
+  fieldbrickzip_withint <- fieldbrickzip + postBetazi
+  fieldbrickrisk_withint <- fieldbrickrisk + postBetarisk
 
   simfieldsmeanzip <- mean(1 / (1 + exp(-fieldbrickzip_withint)))
 
@@ -381,46 +445,47 @@ if (dopostsamplingmcmc) {
   cat("MCMC simulations took: ",format(mcmcsimtime),"\n")
 }
 
-# Do the pairs plots
-if (dopostsamplingaghq & dopostsamplingmcmc) {
-  set.seed(5678798)
-  # MCMC
-  mcmcbetasamps <- as.data.frame(loaloazipmcmc)[ ,c(191,382)]
-  pdf(file = file.path(plotpath,paste0("mcmcpairsplot-",savestamp,".pdf")),width = 7,height = 7)
-  pairs(loaloazipmcmc,pars = c("W[191]","W[382]"),text.panel = function(x,y,labels,cex,font,...) NULL)
-  dev.off()
-
-
-
-  # AGHQ
-  aghqbetasamps <- t(sample_marginal(loaloazipquad,nrow(mcmcbetasamps))$samps[c(191,382), ])
-  pdf(file = file.path(plotpath,paste0("aghqpairsplot-",savestamp,".pdf")),width = 7,height = 7)
-  panel.hist <- function(x, ...)
-  {
-    usr <- par("usr"); on.exit(par(usr))
-    par(usr = c(usr[1:2], 0, 1.5) )
-    h <- hist(x, plot = FALSE)
-    breaks <- h$breaks; nB <- length(breaks)
-    y <- h$counts; y <- y/max(y)
-    rect(breaks[-nB], 0, breaks[-1], y, col = "cyan", ...)
-  }
-  smoothscatterforhere <- function(x,y,...) {
-    smoothScatter(x,y,add = TRUE,nrpoints = 0)
-  }
-  pairs(aghqbetasamps,
-        panel = smoothscatterforhere,
-        diag.panel = panel.hist,
-        text.panel = function(x,y,labels,cex,font,...) NULL)
-  dev.off()
-
-
-
-}
-
 # Write the timing table
 timingtable <- data.frame(
   task = c("AGHQ","MCMC","AGHQSim","MCMCSim"),
   time = c(aghqtime,mcmctime,aghqsimtime,mcmcsimtime)
 )
-readr::write_csv(timingtable,file.path(savepath,paste0("timing-table",savestamp,".csv")))
+readr::write_csv(timingtable,file.path(savepath,paste0("timing-table-fixedparam",savestamp,".csv")))
+
+
+## Get the comparison between MCMC and AGHQ posteriors at the sampled sites ##
+nsamp <- nrow(samps)
+aghqpostsamps <- sample_marginal(loaloazipquad,nsamp)
+aghqpostsamplist <- split(aghqpostsamps$samps,1:nrow(aghqpostsamps$samps))
+aghqpostsamplist <- aghqpostsamplist[grep("U",rownames(aghqpostsamps$samps))]
+mcmcsamplist <- as.list(samps)
+mcmcsamplist <- mcmcsamplist[grep("U",names(mcmcsamplist))]
+
+get_ks <- function(x,y) as.numeric(ks.test(x,y)$statistic)
+ks_stats <- mcmapply(get_ks,aghqpostsamplist,mcmcsamplist)
+ks_stats_zi <- ks_stats[191:380]
+ks_stats_risk <- ks_stats[1:190]
+
+summary(ks_stats_risk)
+summary(ks_stats_zi)
+
+histbreaks <- seq(0,.24,by=.02)
+
+DEFAULTTHEME <- theme_classic() +
+  theme(text = element_text(size = 28))
+
+zi_ks_plot <- ggplot(data.frame(x=ks_stats_zi),aes(x=x)) +
+  DEFAULTTHEME +
+  geom_histogram(aes(y=..density..),breaks = histbreaks,fill='transparent',colour='black') +
+  labs(x='',y='') +
+  coord_cartesian(xlim=c(0,.2))
+ggsave(plot=zi_ks_plot,file = file.path(plotpath,paste0("loaloa-ks-zi.pdf")),width=7,height=7)
+
+risk_ks_plot <- ggplot(data.frame(x=ks_stats_risk),aes(x=x)) +
+  DEFAULTTHEME +
+  geom_histogram(aes(y=..density..),breaks = histbreaks,fill='transparent',colour='black') +
+  labs(x='',y='') +
+  coord_cartesian(xlim=c(0,.2))
+ggsave(plot=risk_ks_plot,file = file.path(plotpath,paste0("loaloa-ks-risk.pdf")),width=7,height=7)
+
 cat(paste0("All done! Go to: ",plotpath," to see the results.\n"))

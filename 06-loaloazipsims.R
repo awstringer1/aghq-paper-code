@@ -91,17 +91,17 @@ simulate_spatial_fields <- function(U,
   # U: matrix of samples, each column is a sample
   # theta: data.frame of theta values
   # Draw from U*|U
-  
+
   # Compute matrix of var, range, shape
   modpar <- cbind(
     var = get_sigma(exp(theta$theta1),exp(theta$theta2))^2,
     range = get_rho(exp(theta$theta1),exp(theta$theta2)),
     shape = maternconstants$nu
   )
-  
+
   fielddat <- pointsdata
   fielddat@data <- as.data.frame(U)
-  
+
   geostatsp::RFsimulate(
     model = modpar,
     data = fielddat,
@@ -192,36 +192,36 @@ simulate_model <- function(pars) {
   stopifnot(length(xx) == n)
   stopifnot(sum(xx) == ntosim)
   stopifnot(all(xx >= 1))
-  
-  
+
+
   # idx <- sort(sample(1:n,ntosim,replace = TRUE))
   idx <- rep(1:n,times = xx)
   idxu <- unique(idx)
-  
+
   # idx <- 1:190
   rowidx <- c(idx,n+idx)
   colidx <- c(idxu,n+1,n+1+idxu,2*(n+1))
-  
+
   # pull the correct probs
   sample_design <- design[rowidx,colidx]
   sampleeta <- as.numeric(sample_design %*% origWmean[colidx])
   samplezipprobs <- ilogit(sampleeta[1:ntosim])
   samplerisk <- ilogit(sampleeta[(ntosim+1):(2*ntosim)])
-  
+
   sampledata <- loaloa[idx, ]
   sampledatau <- loaloa[idxu, ]
-  
-  
+
+
   # simulate the data
   simdataframe <- SpatialPointsDataFrame(sampledata,
                                          data = data.frame(
                                            N = sampledata$N,
                                            y = sample_zip_binomial(samplezipprobs,samplerisk,sampledata$N)
                                          ))
-  
+
   # jitter the points to remove overlap
   # simdataframe@coords <- simdataframe@coords + matrix(rnorm(2*nrow(simdataframe),sd = 1000),ncol = 2)
-  
+
   # Fit the model
   datlist <- list(
     y = simdataframe$y,
@@ -235,11 +235,11 @@ simulate_model <- function(pars) {
     D = raster::pointDistance(sampledatau,lonlat = FALSE),
     betaprec = priorparams$beta_prec
   )
-  
-  # set.seed(456443)
-  
 
-  
+  # set.seed(456443)
+
+
+
   loaloazipquad_sim <- list()
   class(loaloazipquad_sim) <- "try-error"
   inneritr <- 1
@@ -250,7 +250,7 @@ simulate_model <- function(pars) {
       logkappa = log(get_kappa(startingsig,startingrho)),
       logtau = log(get_tau(startingsig,startingrho))
     )
-    
+
     ff <- MakeADFun(data = datlist,
                     parameters = paraminit,
                     random = "W",
@@ -267,7 +267,7 @@ simulate_model <- function(pars) {
     inneritr <- inneritr + 1
   }
   failed <- "try-error" %in% class(loaloazipquad_sim)
-  
+
   filepathout <- file.path(plotpath,paste0("rmse-sim-table",savestamp,".csv"))
   if (failed) {
     rmse <- -1
@@ -282,11 +282,11 @@ simulate_model <- function(pars) {
   }
 
   loazippostsamples <- sample_marginal(loaloazipquad_sim,1e04)
-  
+
   estW <- apply(loazippostsamples$samps,1,mean)
   Wlower <- apply(loazippostsamples$samps,1,quantile,probs = .025)
   Wupper <- apply(loazippostsamples$samps,1,quantile,probs = .975)
-  
+
   # Note: use original design matrix, not sample design matrix. Works
   # because of ordering of the sample
   EE <- design %*% loazippostsamples$samps
@@ -296,22 +296,22 @@ simulate_model <- function(pars) {
   suitprobsmean <- apply(probs[ ,1:190],2,mean)
   suitprobslower <- apply(probs[ ,1:190],2,quantile,probs = .025)
   suitprobsupper <- apply(probs[ ,1:190],2,quantile,probs = .975)
-  
+
   incprobsmean <- apply(probs[ ,191:380],2,mean)
   incprobslower <- apply(probs[ ,191:380],2,quantile,probs = .025)
   incprobsupper <- apply(probs[ ,191:380],2,quantile,probs = .975)
-  
-  
+
+
   # RMSE
   rmse <- sqrt(mean( (estW - origWmean[colidx])^2 ))
   rmse_suit <- sqrt(mean( (suitprobsmean - origzipprobs)^2 ))
   rmse_inc <- sqrt(mean( (incprobsmean - origrisk)^2 ))
-  
+
   # Coverage
   covr <- mean(origWmean[colidx] <= Wupper & origWmean[colidx] >= Wlower)
   covr_suit <- mean(origzipprobs <= suitprobsupper & origzipprobs >= suitprobslower)
   covr_inc <- mean(origrisk <= incprobsupper & origrisk >= incprobslower)
-  
+
   out <- data.frame(n = ntosim,iter = itr,rmse=rmse,covr = covr,rmse_suit=rmse_suit,covr_suit = covr_suit,rmse_inc=rmse_inc,covr_inc = covr_inc,time = modtime)
   readr::write_csv(out,filepathout,append = file.exists(filepathout))
   out
@@ -407,3 +407,4 @@ ggsave(plot = covsuitboxplot,file = file.path(plotpath,paste0("loaloa-suit-cov-b
 ggsave(plot = rmseincboxplot,file = file.path(plotpath,paste0("loaloa-inc-rmse-boxplot-",savestamp,".pdf")),width = 7,height = 7)
 ggsave(plot = covincboxplot,file = file.path(plotpath,paste0("loaloa-inc-cov-boxplot-",savestamp,".pdf")),width = 7,height = 7)
 
+cat(paste0("All done! Go to: ",plotpath," to see the results.\n"))

@@ -37,7 +37,7 @@ R <- dat$epidat[ ,2]
 infected <- !is.infinite(I)
 
 datlist <- list(
-  D = as.matrix(dist(dat$location[dat$epidat[ ,1], ])), 
+  D = as.matrix(dist(dat$location[dat$epidat[ ,1], ])),
   I = I,
   R = R,
   infected = as.numeric(infected[infected])
@@ -49,17 +49,17 @@ ff <- MakeADFun(data = datlist,
                 ADreport = FALSE,
                 silent = TRUE)
 
-
 # AGHQ ----
 
-cntrl <- default_control(negate = TRUE)
+cntrl <- default_control(negate = TRUE,method_summaries = 'correct')
+trans <- make_transformation(log,exp)
 resultslist <- list(
-  aghq(ff,3,c(0,0),control = cntrl),
-  aghq(ff,5,c(0,0),control = cntrl),
-  aghq(ff,7,c(0,0),control = cntrl),
-  aghq(ff,9,c(0,0),control = cntrl),
-  aghq(ff,11,c(0,0),control = cntrl),
-  aghq(ff,13,c(0,0),control = cntrl)
+  aghq(ff,3,c(0,0),control = cntrl,transformation = trans),
+  aghq(ff,5,c(0,0),control = cntrl,transformation = trans),
+  aghq(ff,7,c(0,0),control = cntrl,transformation = trans),
+  aghq(ff,9,c(0,0),control = cntrl,transformation = trans),
+  aghq(ff,11,c(0,0),control = cntrl,transformation = trans),
+  aghq(ff,13,c(0,0),control = cntrl,transformation = trans)
 )
 names(resultslist) <- seq(3,13,by=2)
 
@@ -75,32 +75,39 @@ microbenchmark::microbenchmark(
 )
 
 # Unit: milliseconds
-# expr       min        lq      mean    median        uq       max neval     cld
-# aghq(ff, 3, c(0, 0))  212.8668  213.8543  215.2693  214.5139  215.2885  224.8532   100 a      
-# aghq(ff, 5, c(0, 0))  272.1243  273.3979  275.2554  274.2651  275.2142  285.1065   100  b     
-# aghq(ff, 7, c(0, 0))  360.7452  362.9744  365.2792  364.2050  365.9398  374.8743   100   c    
-# aghq(ff, 9, c(0, 0))  479.5925  482.7099  486.3982  484.4351  485.8624  662.2081   100    d   
-# aghq(ff, 11, c(0, 0))  627.7888  632.7916  635.9133  634.4418  637.3114  650.6599   100     e  
-# aghq(ff, 13, c(0, 0))  808.3682  813.1594  816.0081  815.2659  818.2919  830.6486   100      f 
-
-.215 * 110000/3408
-.275 * 110000/3408
-.365 * 110000/3408
-.486 * 110000/3408
-.636 * 110000/3408
-.815 * 110000/3408
+# expr                                      min       lq     mean   median       uq      max neval
+# aghq(ff, 3, c(0, 0), control = cntrl) 100.6553 100.8632 101.1796 100.9300 101.0215 105.3452   100
+# aghq(ff, 5, c(0, 0), control = cntrl) 159.8424 160.0872 160.4006 160.2457 160.4171 164.9010   100
+# aghq(ff, 7, c(0, 0), control = cntrl) 223.3692 223.8359 224.6426 223.9588 224.2837 230.4604   100
+# aghq(ff, 9, c(0, 0), control = cntrl) 284.8110 285.2891 286.3028 285.4271 285.8088 297.2387   100
+# aghq(ff, 11, c(0, 0), control = cntrl) 356.8188 357.1761 358.2884 357.3310 358.6568 364.1082   100
+# aghq(ff, 13, c(0, 0), control = cntrl) 441.1805 441.6348 442.7299 441.7533 442.1720 463.5870   100
 
 # Get the MCMC results
+numiter <- 1e04
+numwarmup <- 1e03
 stanmod <- tmbstan(
   ff,
   chains = 4,
   cores = 4,
-  iter = 1e04,
-  warmup = 1e03,
+  iter = numiter,
+  warmup = numwarmup,
   init = c(0,0),
   seed = 124698,
   algorithm = "NUTS"
 )
+
+# Timings
+mcmctime <- max(apply(rstan::get_elapsed_time(stanmod),1,sum))
+round(c(
+  .101 * numiter/mcmctime,
+  .160 * numiter/mcmctime,
+  .224 * numiter/mcmctime,
+  .285 * numiter/mcmctime,
+  .357 * numiter/mcmctime,
+  .441 * numiter/mcmctime
+),0)
+
 
 postsamps <- as.data.frame(stanmod)
 postsamps$alpha <- exp(postsamps[ ,1])
@@ -128,13 +135,13 @@ get_plots <- function(K) {
   # moments and quantiles
   # KS
   results <- resultslist[[as.character(K)]]
-  
+
   plotpointsalpha <- results$marginals[[1]]
   plotpointsbeta <- results$marginals[[2]]
-  
+
   plotdatalpha <- compute_pdf_and_cdf(plotpointsalpha,list(totheta = log,fromtheta = exp))
   plotdatbeta <- compute_pdf_and_cdf(plotpointsbeta,list(totheta = log,fromtheta = exp))
-  
+
   alphaplot <- mcmcplotalpha +
     geom_line(
       data = plotdatalpha,
@@ -148,7 +155,7 @@ get_plots <- function(K) {
     labs(title = "",x = "",y = "Density") +
     theme(text = element_text(size = 28)) +
     coord_cartesian(xlim = c(0.005,0.0255),ylim = c(0,200))
-  
+
   betaplot <- mcmcplotbeta +
     geom_line(
       data = plotdatbeta,
@@ -162,8 +169,8 @@ get_plots <- function(K) {
     labs(title = "",x = "",y = "Density") +
     theme(text = element_text(size = 28)) +
     coord_cartesian(xlim = c(0.8,2.05),ylim = c(0,3))
-  
-  
+
+
   list(alpha = alphaplot,beta = betaplot)
 }
 
@@ -198,26 +205,28 @@ ggsave(file.path(plotpath,paste0("disease-beta-K7-",plotstamp,".pdf")),
 # Summaries
 get_summaries <- function(K) {
   results <- resultslist[[as.character(K)]]
-  
-  themeans <- compute_moment(results$normalized_posterior,exp)
-  thesds <- compute_moment(results$normalized_posterior,function(x) (exp(x) - themeans)^2) %>% sqrt()
-  alphaquants <- exp(compute_quantiles(results$marginals[[1]]))
-  betaquants <- exp(compute_quantiles(results$marginals[[2]]))
-  
-  aghqpostsamps <- sample_marginal(results,nrow(postsamps))
-  
+
+  themeans <- compute_moment(results,nn=1,method='correct')
+  thesds <- sqrt(compute_moment(results,nn=2,method='correct',type='central'))
+
+  quants <- compute_quantiles(results)
+  alphaquants <- quants[[1]]
+  betaquants <- quants[[2]]
+
+  aghqpostsamps <- sample_marginal(results,nrow(postsamps),transformation = default_transformation())
+
   suppressWarnings({
     ks_alpha <- ks.test(
       postsamps$alpha,
       exp(aghqpostsamps[[1]])
     )$statistic
-    
+
     ks_beta <- ks.test(
       postsamps$beta,
       exp(aghqpostsamps[[2]])
     )$statistic
   })
-  
+
   tibble(
     alphamean = themeans[1],
     betamean = themeans[2],
@@ -234,6 +243,11 @@ get_summaries <- function(K) {
 
 postsummaries <- map(seq(3,13,by=2),get_summaries) %>% reduce(bind_rows)
 readr::write_csv(postsummaries,file.path(plotpath,paste0("posteriorsummarytable-",plotstamp,".csv")))
+knitr::kable(
+  postsummaries,
+  digits = 5,
+  format = 'markdown'
+)
 
 
 

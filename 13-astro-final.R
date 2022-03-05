@@ -186,13 +186,17 @@ useropt <- list(
   mode = ipopt_result$solution,
   hessian = ff$he(ipopt_result$solution)
 )
+# Fit it with "reuse" first, then correct marginals later
 cntrl <- aghq::default_control(negate = TRUE)
 
 # Do the quadrature
 tm <- Sys.time()
 astroquad <- aghq::aghq(ff,5,thetastart,optresults = useropt,control = cntrl)
+# Correct the marginals except for beta, which gave NA due to the constraints
+for (j in 1:3) astroquad$marginals[[j]] <- marginal_posterior(astroquad,j,method='correct')
 quadruntime <- difftime(Sys.time(),tm,units = 'secs')
 cat("Run time for mass model quadrature:",quadruntime,"seconds.\n")
+
 
 # Total time
 optruntime + quadruntime # Time difference of 1.010533 secs 2021/04/19
@@ -215,7 +219,7 @@ get_elapsed_time(stanmod)
 # chain:2 0.912805 4.52549
 # chain:3 0.812718 4.90522
 # chain:4 0.810394 4.17531
-mean(apply(get_elapsed_time(stanmod),1,sum)) # 5.63 seconds
+mean(apply(get_elapsed_time(stanmod),1,sum))
 
 # Inference
 
@@ -255,14 +259,14 @@ get_theta4 <- function(beta)
   log(-log( (beta - parambounds$beta[1]) / 
               (parambounds$beta[2] - parambounds$beta[1]) ))
 ## Compute the transformed pdfs ##
-translist1 <- list(totheta = get_theta1,fromtheta = get_psi0)
-translist2 <- list(totheta = get_theta2,fromtheta = get_gamma)
-translist3 <- list(totheta = get_theta3,fromtheta = get_alpha)
-translist4 <- list(totheta = get_theta4,fromtheta = get_beta)
+translist1 <- make_transformation(totheta = get_theta1,fromtheta = get_psi0)
+translist2 <- make_transformation(totheta = get_theta2,fromtheta = get_gamma)
+translist3 <- make_transformation(totheta = get_theta3,fromtheta = get_alpha)
+translist4 <- make_transformation(totheta = get_theta4,fromtheta = get_beta)
 
 psi0pdf <- compute_pdf_and_cdf(astroquad$marginals[[1]],translist1)
 gammapdf <- compute_pdf_and_cdf(astroquad$marginals[[2]],translist2)
-alphapdf <- compute_pdf_and_cdf(astroquad$marginals[[3]],translist3)
+alphapdf <- compute_pdf_and_cdf(astroquad$marginals[[3]],translist3,interpolation = 'polynomial')
 betapdf <- compute_pdf_and_cdf(astroquad$marginals[[4]],translist4)
 
 Psi0prior <- function(Psi0) dunif(Psi0,parambounds$Psi0[1],parambounds$Psi0[2],log = FALSE)
@@ -400,14 +404,16 @@ ggsave(file.path(plotpath,paste0("massplot-",savestamp,".pdf")),cummassplot,widt
 
 # KS statistic
 
-aghqpostsamps <- sample_marginal(astroquad,nrow(standata))
+aghqpostsamps_spline <- sample_marginal(astroquad,nrow(standata),interpolation = 'spline')
+aghqpostsamps_poly <- sample_marginal(astroquad,nrow(standata),interpolation = 'polynomial')
+
 
 suppressWarnings({
   kstable <- data.frame(
-    psi0 = ks.test(standata[[1]],aghqpostsamps[[1]])$statistic,
-    gamma = ks.test(standata[[2]],aghqpostsamps[[2]])$statistic,
-    alpha = ks.test(standata[[3]],aghqpostsamps[[3]])$statistic,
-    beta = ks.test(standata[[4]],aghqpostsamps[[4]])$statistic
+    psi0 = ks.test(standata[[1]],aghqpostsamps_poly[[1]])$statistic,
+    gamma = ks.test(standata[[2]],aghqpostsamps_spline[[2]])$statistic,
+    alpha = ks.test(standata[[3]],aghqpostsamps_poly[[3]])$statistic,
+    beta = ks.test(standata[[4]],aghqpostsamps_poly[[4]])$statistic
   )
 })
 
