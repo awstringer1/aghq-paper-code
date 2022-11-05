@@ -1,8 +1,6 @@
 # Bayesian Inference using Adaptive Gauss-Hermite Quadrature
 
-This repository contains the code used to implement the examples in **Stochastic Convergence Rates and Applications of Adaptive Quadrature in Bayesian Inference** by Blair Bilodeau, Alex Stringer, and Yanbo Tang (equal contribution authors). A [preprint](https://arxiv.org/abs/2102.06801) is available. As the paper
-goes through the publication process, the code here may be more recent than the preprint, but should
-be mostly the same. The two sources will be synced when (if?) the paper is published.
+This repository contains the code used to implement the examples in **Stochastic Convergence Rates and Applications of Adaptive Quadrature in Bayesian Inference** by Blair Bilodeau, Alex Stringer, and Yanbo Tan. A [preprint](https://arxiv.org/abs/2102.06801) and open access [journal version](https://www.tandfonline.com/doi/full/10.1080/01621459.2022.2141635) are available.
 
 The examples all make use of the `aghq` package, available [on github](https://github.com/awstringer1/aghq) as well as `CRAN` (`install.packages("aghq")`). A [vignette](https://arxiv.org/abs/2101.04468) for that package is also available. The code currently here uses version `0.4.0` of `aghq`.
 
